@@ -1,0 +1,11 @@
+todo:
+	remove event chaining system -
+	replace map containers with vector -
+
+
+explanation:
+	remove event chaining system
+	; this is unnecessary bloat and can slow down event system
+
+	replace map containers with vector
+	; using only one map to map from "event_name" to id inside vector is enough
