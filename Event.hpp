@@ -4,6 +4,7 @@
 #include <functional>
 #include <tuple>
 #include "fsa.hpp"
+#include <tbb/task_group.h>
 
 class EventBase;
 
@@ -82,6 +83,7 @@ class Event {
 		struct block64 {
 			char dummy[64];
 		};
+		tbb::task_group task;
 		my::fsa<block64> allocator;
 		enum class container_type {
 			type_class,
@@ -114,17 +116,10 @@ class Event {
 		};
 		friend bool operator==(const checker_container &a, const checker_container &b);
 
-		// oh no another map
 		std::map< unsigned int, container > registered_checkers;
-
-		// not good
 		std::map< unsigned int, std::list<container> > attached_checkers;
-
-		// nooo
 		std::map< unsigned int, std::list<checker_container> > checker_listeners;
-
 		std::map< unsigned int, unsigned int > listener_to_registered_event_id;
-
 		std::map< unsigned int, direct_event_container > listener_contact;
 
 		unsigned int hash( std::string& str );
