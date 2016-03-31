@@ -1,7 +1,12 @@
-todo:
+TODO:
 	remove event chaining system -
 	replace map containers with vector -
-
+	implement priorities -
+	implement register event with options for emitting events serially by choice -
+	implement setting affinity for emitting events on specified thread rather than
+		random -
+	implement automatic priority assigner based on maximum latency which
+		gets specified when registering event -
 
 explanation:
 	remove event chaining system
