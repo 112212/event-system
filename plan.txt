@@ -18,7 +18,6 @@ Requested event:
 
 	id register(name, add_or_remove_listener_function = 0)
 	unregister(id/name)
-	
 	emit(event_id, listener_id = -1)
 	listen(id/name, params...)
 	stop_listening(id/name)
