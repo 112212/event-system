@@ -5,7 +5,10 @@
 #include <vector>
 #include <utility>
 // #include "fsa.hpp"
-// ----- function type information
+
+#ifndef CALL_TUPLE_ARGS
+#define CALL_TUPLE_ARGS
+// ----- template hell ----------------
 template< typename t, std::size_t n, typename = void >
 struct function_type_information;
 
@@ -30,24 +33,26 @@ struct function_type_information< ftor, n,
 	: function_type_information< decltype( & ftor::operator () ), n > {};
 // --------------------------------------
 
-namespace my {
-	template <typename F, typename Tuple, std::size_t... Is>
-	void tuple_call(F f, Tuple && t, std::index_sequence<Is...> is) {
-		f(std::get<Is>( std::forward<Tuple>(t) )...);
-	}
-	
-	template <typename F, typename Tuple>
-	void call(F f, Tuple && t) {
-		using ttype = typename std::decay<Tuple>::type;
-		tuple_call(f, std::forward<Tuple>(t), std::make_index_sequence<std::tuple_size<ttype>::value>{});
-	}
+template <typename F, typename Tuple, std::size_t... Is>
+void tuple_call(F f, Tuple && t, std::index_sequence<Is...> is) {
+	f(std::get<Is>( std::forward<Tuple>(t) )...);
 }
 
+template <typename F, typename Tuple>
+void call(F f, Tuple && t) {
+	using ttype = typename std::decay<Tuple>::type;
+	tuple_call(f, std::forward<Tuple>(t), std::make_index_sequence<std::tuple_size<ttype>::value>{});
+}
+// -------------------------------
+#endif
+
+namespace Event {
+	
+typedef unsigned int id_type;
+
 class Event {
-	public:
-		typedef unsigned int id_type;
 	private:
-		
+	
 		typedef std::function<void(const void*)> any_call;
 		
 		void _emit(id_type id, const void* args);
@@ -59,7 +64,7 @@ class Event {
 			using Tuple = typename function_type_information<F,0>::tuple;
 			return [=](const void* v) {
 				const Tuple &t = *static_cast<const Tuple*>(v);
-				my::call(f, t);
+				call(f, t);
 			};
 		}
 		
@@ -121,3 +126,40 @@ class Event {
 		}
 };
 
+	// singleton
+	extern Event singleton;
+	inline id_type Register(std::string event_name) {
+		return singleton.Register(event_name);
+	}
+	
+	template<typename F>
+	inline id_type Register(std::string event_name, F add_or_remove_func) {
+		return singleton.Register(event_name, add_or_remove_func);
+	}
+
+	inline void Unregister( std::string registered_event_name ) {
+		singleton.Unregister(registered_event_name);
+	}
+	inline void Unregister( id_type event_id ) {
+		singleton.Unregister(event_id);
+	}
+	inline void StopListening( id_type listener_id ) {
+		return singleton.StopListening(listener_id);
+	}
+	template <typename F, typename ...Args>
+	inline id_type Listen(std::string str, F func, Args... args) {
+		return singleton.Listen(str, func, args...);
+	}
+	
+	template <typename F, typename ...Args>
+	inline id_type Listen(id_type event_id, F func, Args... args) {
+		return singleton.Listen(event_id, func, args...);
+	}
+
+	template <typename ...Args>
+	void Emit( id_type id, Args... args ) {
+		singleton.Emit(id,args...);
+	}
+
+
+}

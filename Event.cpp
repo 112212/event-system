@@ -7,8 +7,9 @@ using std::endl;
 // #define NDEBUG
 #include <cassert>
 
-using id_type = Event::id_type;
+namespace Event {
 
+Event singleton;
 Event::Event() {}
 const id_type id_none = 0xffff;
 const id_type id_none_mask = 0xffff;
@@ -74,7 +75,7 @@ id_type Event::_register(std::string& evt_name, any_call f) {
 		event e;
 		e.add_or_remove = f;
 		m_events.push_back(e);
-		cout << "evt: " << id << ", " << get_event_pos(id) << endl;
+		// cout << "evt: " << id << ", " << get_event_pos(id) << endl;
 		return id;
 	} else 
 		return -1;
@@ -97,4 +98,5 @@ id_type Event::_listen(id_type id, any_call f, void* args, id_type& idt) {
 	} else {
 		return -1;
 	}
+}
 }
