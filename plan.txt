@@ -1,11 +1,25 @@
 todo:
-	remove event chaining system -
-	replace map containers with vector -
+	+ remove chaining, its unecessary
+	+ replace map containers with vector
 
 
-explanation:
-	remove event chaining system
-	; this is unnecessary bloat and can slow down event system
+--------------
 
-	replace map containers with vector
-	; using only one map to map from "event_name" to id inside vector is enough
+Bare event (pure observer based):
+	event was dealt with but lets notify others to respond to it too if they want
+	
+Requested event:
+	if anyone is interested in particular event then lets poll for it when there is chance that event might happen
+
+	emit to all
+	emit to specific listener
+
+--------------
+
+	id register(name, add_or_remove_listener_function = 0)
+	unregister(id/name)
+	
+	emit(event_id, listener_id = -1)
+	listen(id/name, params...)
+	stop_listening(id/name)
+	

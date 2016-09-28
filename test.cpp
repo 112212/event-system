@@ -2,35 +2,33 @@
 #include "Event.hpp"
 #include <thread>
 #include <chrono>
-#include "macros.hpp"
+#include <list>
 
 using namespace std;
 
-Event eventsystem;
+Event es;
 
-void my_event_checker( unsigned int checker_id, const void* data ) {
-	cout << "my event checker" << endl;
-	eventsystem.EmitEvent( checker_id, 2, 67 );
-}
+// void my_event_checker( Event::id_type checker_id, const void* data ) {
+	// cout << "my event checker" << endl;
+	// es.EmitEvent( checker_id, 2, 67 );
+// }
 
 
-// void my_event_click_handler( const void* data ) {
-	// int x,y;
-	// Event::GetData( data, x, y );
-EVENT2(my_event_click_handler, int, x, int, y, {
+void my_event_click_handler( int x, int y) {
 
-	static uint counter = 0;
+	static uint32_t counter = 0;
 	if( ++counter == 100000 ) {
-
 		cout << "clicked at " << x << ", " << y << " : " << counter << endl;
 		counter = 0;
 	}
-})
+}
 
-class EventWithClass : public EventBase {
+class EventWithClass {
 	private:
+		Event* es;
+		Event::id_type id;
 		struct container {
-			unsigned int listener_id;
+			Event::id_type listener_id;
 			int fixed_time;
 			int time;
 		};
@@ -64,24 +62,40 @@ class EventWithClass : public EventBase {
 			}
 		}
 	public:
-	EventWithClass() : time_passed(0) {}
-	void OnAddListener( unsigned int listener_id, const void* data ) {
-		int time;
-		Event::GetData( data, time );
-		cout << "registered new listener: " << listener_id << " , with param " << time << endl;
-		container c;
-		c.listener_id = listener_id;
-		c.time = time;
-		c.fixed_time = time;
-		addToList( c );
+	EventWithClass(std::string event_name, Event* evt_system) : time_passed(0) {
+		es = evt_system;
+		es->Register(event_name, 
+			[&] (bool add, Event::id_type listener_id, int time)
+			 { this->OnAddOrRemoveListener(add,listener_id,time); });
+		es->Listen("tick", [&](unsigned int time_step) {
+			this->OnCheckEvent(time_step);
+		});
+	}
+	void OnAddOrRemoveListener( bool add, Event::id_type listener_id, int time ) {
+		if(add) {
+			cout << "registered new listener: " << listener_id << " , with param " << time << endl;
+			container c;
+			c.listener_id = listener_id;
+			c.time = time;
+			c.fixed_time = time;
+			addToList( c );
+		} else {
+			for( auto it = time_list.begin(); it != time_list.end(); it++ ) {
+			if( it->listener_id == listener_id ) {
+				time_list.erase( it );
+				break;
+				}
+			}
+			cout << "on remove listener ..." << endl;
+		}
 	}
 	// void OnCheckEvent( const void* data ) {
 
 		// unsigned int time_step;
 		// Event::GetData( data, time_step );
-	EVENT2(OnCheckEvent, unsigned int, time_step, {
+	void OnCheckEvent(unsigned int time_step) {
 
-		unsigned int send_to_listener_id = 0;
+		Event::id_type send_to_listener_id = 0;
 		unsigned int time_p;
 
 		time_passed += time_step;
@@ -95,25 +109,12 @@ class EventWithClass : public EventBase {
 
 		//cout << "on check event ... sending event to: " << send_to_listener_id << endl;
 		if( send_to_listener_id != 0 )
-			EmitEvent( send_to_listener_id, time_p );
-	})
-
-	void OnRemoveListener( int listener_id ) {
-		for( auto it = time_list.begin(); it != time_list.end(); it++ ) {
-			if( it->listener_id == listener_id ) {
-				time_list.erase( it );
-				break;
-			}
-		}
-		cout << "on remove listener ..." << endl;
+			es->Emit( send_to_listener_id, time_p );
 	}
 };
 
 // events
-void my_event( const void* data ) {
-	int a; char* b;
-	Event::GetData( data, a, b );
-
+void my_event( int a, char* b ) {
 	cout << "my event called " << a << " , " << b << endl;
 }
 
@@ -125,59 +126,62 @@ void my_event3( const void* data ) {
 	cout << "my event3 called" << endl;
 }
 
-void func_class_event_test( const void* data ) {
-
-	int time_diff;
-	Event::GetData( data, time_diff );
+void func_class_event_test( int time_diff ) {
 	cout << "1s passed with error " << time_diff << endl;
-
 }
 
-void my_chain_event_checker( unsigned int checker_id, const void* data ) {
-	cout << "chain event checker called" << endl;
-}
+// void my_chain_event_checker( unsigned int checker_id, const void* data ) {
+	// cout << "chain event checker called" << endl;
+// }
 
 int main() {
 
-	unsigned int tick_event = eventsystem.RegisterEvent("tick");
+	Event::id_type tick_event = es.Register("tick");
 
-	EventWithClass ewc;
-	eventsystem.RegisterEvent("timer", "tick", &ewc);
+	cout << "tick_event: " << tick_event << endl;
+	EventWithClass ewc("timer", &es);
+	// es.RegisterEvent("timer", "tick", &ewc);
+	
+	
+	
+
+	es.Listen("timer", func_class_event_test, 1000);
 
 
-	eventsystem.AddEventListener("timer", func_class_event_test, 1000);
-
-
-	eventsystem.AddEventListener("timer", []( const void* data ) {
-		int error;
-		Event::GetData( data, error );
+	es.Listen("timer", []( int error ) {
 		cout << "500ms passed with error " << error << endl;
 	}, 500);
 
+	// es.Listen("tick", []( int ts ) {
+		// cout << "TICK: " << ts << endl;
+	// });
+	/*
+	es.RegisterEvent("some_event", "timer", my_event_checker, 2000);
+	es.RegisterEvent("some_event1", "some_event", my_event_checker);
+	es.RegisterEvent("chain_to_some_event", "some_event1", my_chain_event_checker);
 
-	eventsystem.RegisterEvent("some_event", "timer", my_event_checker, 2000);
-	eventsystem.RegisterEvent("some_event1", "some_event", my_event_checker);
-	eventsystem.RegisterEvent("chain_to_some_event", "some_event1", my_chain_event_checker);
 
 
+	
+	es.Listen("some_event1", my_event3);
 
-	eventsystem.AddEventListener("some_event1", my_event3);
-
-
-	unsigned int evt = eventsystem.AddEventListener("chain_to_some_event", my_event2);
+	unsigned int evt = es.AddEventListener("chain_to_some_event", my_event2);
 	unsigned int evt2;
-	evt2 = eventsystem.AddEventListener("timer", [evt,evt2](const void* data) {
-		cout << "\x1b[33munregistered some_event\x1b[0m" << endl;
-		eventsystem.RemoveEventListener(evt);
-		cout << "trying to unregister: " << evt2 << endl;
-		eventsystem.RemoveEventListener(evt2);
-		//eventsystem.UnregisterEvent( "some_event" );
+	*/
+	es.Listen("timer", []() {
+		// cout << "\x1b[33munregistered some_event\x1b[0m" << endl;
+		// es.RemoveEventListener(evt);
+		// cout << "trying to unregister: " << evt2 << endl;
+		// es.RemoveEventListener(evt2);
+		//es.UnregisterEvent( "some_event" );
+		cout << "LOL\n";
 	}, 10000);
+	
 
 	// emit base event 1 time
 	unsigned int time_step = 1;
 	while(true) {
-		eventsystem.EmitEvent( tick_event, time_step );
+		es.Emit( tick_event, time_step );
 		this_thread::sleep_for(chrono::milliseconds(time_step));
 	}
 

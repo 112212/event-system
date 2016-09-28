@@ -1,293 +1,100 @@
 #include "Event.hpp"
 
+#include <iostream>
+using std::cout;
+using std::endl;
+
 // #define NDEBUG
 #include <cassert>
 
-//#include <iostream>
+using id_type = Event::id_type;
 
-Event::Event() : event_id_tracker(1), allocator(512 * 64) {}
+Event::Event() {}
+const id_type id_none = 0xffff;
+const id_type id_none_mask = 0xffff;
+inline id_type make_listener_id(id_type evt_pos, id_type lst_pos) {
+	return (evt_pos << 16) | lst_pos;
+}
+inline id_type make_event_id(id_type evt_pos) {
+	return (evt_pos << 16) | id_none;
+}
+inline id_type get_listener_pos(id_type id) {
+	return id & id_none_mask;
+}
+inline id_type get_event_pos(id_type id) {
+	return id >> 16;
+}
 
-
-void Event::emitEvent( unsigned int registered_event_id, const void* data ) {
-	//auto &c = registered_checkers[ registered_event_id ];
-	
-	// notify listeners
-	auto &checker_list = checker_listeners[ registered_event_id ];
-	for( auto &i : checker_list ) {
-		i.func(data);
+void Event::Unregister( std::string registered_event_name ) {
+	auto it = m_str_to_event.find(registered_event_name);
+	if(it != m_str_to_event.end()) {
+		Unregister(it->second);
 	}
-	
-	// notify attached checkers
-	auto &ac_list = attached_checkers[ registered_event_id ];
-	for( auto &attached : ac_list ) {
-		
-		if( attached.type == container_type::type_class ) {
-			attached.evt->OnCheckEvent( data );
+}
+
+void Event::Unregister( id_type event_id ) {
+	id_type pos = get_event_pos(event_id);
+	if(pos >= 0 && pos < m_events.size()) {
+		m_events.erase(m_events.begin()+pos);
+	}
+}
+
+void Event::StopListening( id_type listener_id ) {
+	id_type evt_id = get_event_pos(listener_id);
+	id_type lst_id = get_listener_pos(listener_id);
+	if(evt_id >= 0 && evt_id < m_events.size()) {
+		event& e = m_events[evt_id];
+		if(lst_id >= 0 && lst_id < e.listeners.size()) {
+			e.listeners.erase(e.listeners.begin()+lst_id);
+		}
+	}
+}
+
+
+void Event::_emit(id_type id, const void* args) {
+	id_type evt_id = get_event_pos(id);
+	if(evt_id < m_events.size()) {
+		event& e = m_events[evt_id];
+		id_type lst_id = get_listener_pos(id);
+		if(lst_id != id_none && lst_id >= 0 && lst_id < e.listeners.size()) {
+			e.listeners[lst_id](args);
 		} else {
-			attached.func( attached.event_id, data );
-		}
-	}
-	
-}
-
-
-void Event::emitEventDirect( unsigned int event_id, const void* data ) {
-	direct_event_container &c = listener_contact[ event_id ];
-	switch( c.type ) {
-		case container_type::type_class:
-			c.evt->OnCheckEvent(data);
-			break;
-		case container_type::type_function:
-			c.checker_func(c.checker_id, data);
-			break;
-		case container_type::type_event_handler:
-			c.func(data);
-			break;
-	}
-}
-
-
-unsigned int Event::RegisterEvent(std::string str) {
-	auto h = hash(str);
-	auto r = registered_checkers.find( h );
-	if( r != registered_checkers.end() ) {
-		return 0;
-	}
-	container c( container_type::type_empty );
-	c.event_id = h;
-	c.attached_to = 0;
-	registered_checkers[ h ] = c;
-	return h;
-}
-
-unsigned int Event::registerEvent(std::string str, std::string attach, std::function<void(unsigned int, const void*)> func, const void* data) {
-	auto h = hash(str);
-	auto q = hash(attach);
-	
-	
-	auto r = registered_checkers.find( h );
-	if( r != registered_checkers.end() ) {
-		return 0;
-	}
-	
-	auto parent = registered_checkers.find( q );
-	if( parent == registered_checkers.end() ) {
-		return 0;
-	}
-	
-	container c( container_type::type_function );
-	c.func = func;
-	c.event_id = h;
-	c.attached_to = q;
-	c.listener_event_id = 0;
-	
-	if( parent->second.type == container_type::type_class ) {
-		c.listener_event_id = event_id_tracker;
-		direct_event_container d;
-		d.type = container_type::type_function;
-		d.checker_func = func;
-		d.checker_id = h;
-		d.data = data;
-		listener_contact[ event_id_tracker ] = d;
-		event_id_tracker++;
-	}
-	
-	checker_listeners[ h ] = std::list<checker_container>();
-	registered_checkers[ h ] = c;
-	
-	return h;
-}
-
-unsigned int Event::registerEvent(std::string str, std::string attach, EventBase* evt, const void* data) {
-	auto h = hash(str);
-	auto q = hash(attach);
-	
-	auto r = registered_checkers.find( h );
-	if( r != registered_checkers.end() ) {
-		return 0;
-	}
-	auto parent = registered_checkers.find( q );
-	if( parent == registered_checkers.end() ) {
-		return 0;
-	}
-	
-	container c( container_type::type_class );
-	evt->event_id = h;
-	evt->eventsystem = this;
-	c.evt = evt;
-	c.event_id = h;
-	c.attached_to = q;
-	c.listener_event_id = 0;
-	
-	if( parent->second.type == container_type::type_class ) {
-		c.listener_event_id = event_id_tracker;
-		direct_event_container d;
-		d.type = container_type::type_class;
-		d.evt = evt;
-		d.data = data;
-		listener_contact[ event_id_tracker ] = d;
-		event_id_tracker++;
-	}
-	
-	checker_listeners[ h ] = std::list<checker_container>();
-	registered_checkers[ h ] = c;
-	
-	return h;
-}
-
-void Event::RemoveEventListener( unsigned int event_id ) {
-	auto r = listener_to_registered_event_id.find( event_id );
-	if( r == listener_to_registered_event_id.end() ) {
-		return;
-	}
-	auto registered_event_id = r->second;
-	listener_to_registered_event_id.erase( r );
-	
-	auto q = registered_checkers.find( registered_event_id );
-	assert( q != registered_checkers.end() );
-	if( q->second.type == container_type::type_class ) {
-		EventBase* cls = q->second.evt ;
-		cls->OnRemoveListener( event_id );
-	}
-	
-	checker_container ck( event_id );
-	checker_listeners[ registered_event_id ].remove( ck );
-	
-	// no more listeners, remove from attached checker list
-	auto cur = registered_event_id;
-	while ( checker_listeners[ cur ].size() == 0 ) {
-			
-		auto &cur_checker = registered_checkers[ cur ];
-		unsigned int &attached_to = cur_checker.attached_to;
-		
-		if( attached_to != 0 ) {
-			auto &lst = attached_checkers[ attached_to ];
-			for( auto it = lst.begin(), end = lst.end(); it != end; it++ ) {
-				if( it->event_id == cur_checker.event_id ) {
-					lst.erase( it );
-					break;
-				}
-			}
-			
-			auto &parent = registered_checkers[ cur_checker.attached_to ];
-			if( parent.type == container_type::type_class ) {
-				parent.evt->OnRemoveListener( cur_checker.listener_event_id );
-			}
-			cur = attached_to;
-		} else {
-			break;
-		}
-	}
-	
-	listener_contact.erase( event_id );
-}
-
-bool operator==(const Event::checker_container &a, const Event::checker_container &b) {
-	return a.event_id == b.event_id;
-}
-
-unsigned int Event::hash( std::string& str ) {
-	return (unsigned int)std::hash<std::string>()(str);
-}
-
-
-unsigned int Event::addEventListener(std::string& str, std::function<void(const void*)> func, const void* data) {
-	auto h = hash(str);
-	auto r = registered_checkers.find( h );
-	if( r == registered_checkers.end() ) {
-		return 0;
-	}
-	if( r->second.type == container_type::type_class ) {
-		EventBase* cls = r->second.evt;
-		cls->OnAddListener( event_id_tracker, data );
-	}
-	
-	direct_event_container d;
-	d.type = container_type::type_event_handler;
-	d.func = func;
-	listener_contact[ event_id_tracker ] = d;
-	
-	checker_container ck(event_id_tracker);
-	ck.func = func;
-	checker_listeners[ h ].push_back( ck );
-	
-	listener_to_registered_event_id[ event_id_tracker ] = h;
-	
-	
-	if( checker_listeners[ h ].size() == 1 && r->second.attached_to != 0) {
-		auto cur = h;
-		bool done = false;
-		while( !done && cur != 0 ) {
-			
-			auto &cur_checker = registered_checkers[ cur ];
-			unsigned int attached_to = cur_checker.attached_to;
-			
-			if( attached_to != 0 ) {
-				bool found = false;
-				auto q = attached_checkers.find(attached_to);
-				if( q == attached_checkers.end() ) {
-					container &c = registered_checkers[ cur ];
-					attached_checkers[ attached_to ] = std::list<container>();
-					attached_checkers[ attached_to ].push_back( c );
-				} else {
-					done = true;
-					auto &lst = attached_checkers[ attached_to ];
-					for( auto &e : lst ) {
-						if( e.event_id == cur ) {
-							found = true;
-							break;
-						}
-					}
-					if( !found ) {
-						lst.push_back( registered_checkers[ cur ] );
-					}
-				}
-				if(!found) {
-					auto &parent = registered_checkers[ attached_to ];
-					if( parent.type == container_type::type_class ) {
-						assert( cur_checker.listener_event_id != 0 );
-						parent.evt->OnAddListener( cur_checker.listener_event_id, 
-								listener_contact[ cur_checker.listener_event_id ].data );
-					}
-				}
-				cur = attached_to;
-			} else {
-				done = true;
+			for(auto& l : e.listeners) {
+				l(args);
 			}
 		}
 	}
-	
-	return event_id_tracker++;
 }
 
-void Event::UnregisterEvent( std::string registered_event_name ) {
-	UnregisterEvent( hash(registered_event_name) );
+id_type Event::_register(std::string& evt_name, any_call f) {
+	if(m_str_to_event.find(evt_name) == m_str_to_event.end()) {
+		id_type pos = m_events.size();
+		id_type id = make_event_id(pos);
+		m_str_to_event[evt_name] = id;
+		event e;
+		e.add_or_remove = f;
+		m_events.push_back(e);
+		cout << "evt: " << id << ", " << get_event_pos(id) << endl;
+		return id;
+	} else 
+		return -1;
 }
-void Event::UnregisterEvent( unsigned int registered_event_id ) {
-	// unregister event, and all childs of this event
-	auto r = registered_checkers.find( registered_event_id );
-	if( r == registered_checkers.end() ) {
-		return;
-	}
-	container &c = r->second;
-	
-	if( c.attached_to != 0 ) {
-		unsigned int attached_to = c.attached_to;
-		auto &parent = registered_checkers[ attached_to ];
-		if( parent.type == container_type::type_class ) {
-			assert( c.listener_event_id != 0 );
-			allocator.free( (block64*)( listener_contact[ c.listener_event_id ].data ) );
-			listener_contact.erase( c.listener_event_id );
-			parent.evt->OnRemoveListener( c.listener_event_id );
+
+
+
+id_type Event::_listen(id_type id, any_call f, void* args, id_type& idt) {
+	id_type evt_id = get_event_pos(id);
+	if(evt_id >= 0 && evt_id < m_events.size()) {
+		event &e = m_events[evt_id];
+		id_type listener_id = make_listener_id(evt_id, e.listeners.size());
+		e.listeners.push_back(f);
+		if(args && e.add_or_remove) {
+			idt = listener_id;
+			e.add_or_remove(args);
 		}
+		// cout << "adding listener to " << evt_id << ", " <<  listener_id << endl;
+		return listener_id;
+	} else {
+		return -1;
 	}
-	
-	auto &lst = attached_checkers[ registered_event_id ];
-	for( auto &i : lst ) {
-		UnregisterEvent( i.event_id );
-	}
-	
-	attached_checkers.erase( registered_event_id );
-	registered_checkers.erase( registered_event_id );
 }
-
