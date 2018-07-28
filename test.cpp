@@ -6,7 +6,7 @@
 
 using namespace std;
 
-Event es;
+Event::Event es;
 
 // void my_event_checker( Event::id_type checker_id, const void* data ) {
 	// cout << "my event checker" << endl;
@@ -25,7 +25,7 @@ void my_event_click_handler( int x, int y) {
 
 class EventWithClass {
 	private:
-		Event* es;
+		Event::Event* es;
 		Event::id_type id;
 		struct container {
 			Event::id_type listener_id;
@@ -62,7 +62,7 @@ class EventWithClass {
 			}
 		}
 	public:
-	EventWithClass(std::string event_name, Event* evt_system) : time_passed(0) {
+	EventWithClass(std::string event_name, Event::Event* evt_system) : time_passed(0) {
 		es = evt_system;
 		es->Register(event_name, 
 			[&] (bool add, Event::id_type listener_id, int time)
@@ -144,7 +144,7 @@ int main() {
 	
 	
 	
-
+/*
 	es.Listen("timer", func_class_event_test, 1000);
 
 
@@ -155,19 +155,8 @@ int main() {
 	// es.Listen("tick", []( int ts ) {
 		// cout << "TICK: " << ts << endl;
 	// });
-	/*
-	es.RegisterEvent("some_event", "timer", my_event_checker, 2000);
-	es.RegisterEvent("some_event1", "some_event", my_event_checker);
-	es.RegisterEvent("chain_to_some_event", "some_event1", my_chain_event_checker);
 
 
-
-	
-	es.Listen("some_event1", my_event3);
-
-	unsigned int evt = es.AddEventListener("chain_to_some_event", my_event2);
-	unsigned int evt2;
-	*/
 	es.Listen("timer", []() {
 		// cout << "\x1b[33munregistered some_event\x1b[0m" << endl;
 		// es.RemoveEventListener(evt);
@@ -176,7 +165,7 @@ int main() {
 		//es.UnregisterEvent( "some_event" );
 		cout << "LOL\n";
 	}, 10000);
-	
+	*/
 
 	// emit base event 1 time
 	unsigned int time_step = 1;

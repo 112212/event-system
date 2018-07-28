@@ -1,2 +1,2 @@
-# event-system
+# EventSystem
 
