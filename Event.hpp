@@ -2,13 +2,13 @@
 #include <string>
 #include <functional>
 #include <tuple>
+#include <map>
 #include <vector>
 #include <utility>
 // #include "fsa.hpp"
 
-#ifndef CALL_TUPLE_ARGS
-#define CALL_TUPLE_ARGS
-// ----- template hell ----------------
+// #ifndef CALL_TUPLE_ARGS
+// #define CALL_TUPLE_ARGS
 template<bool done, int n, typename... Args>
 struct tuple_skip_n_args;
 
@@ -58,9 +58,9 @@ void call(F f, Tuple && t, Args... args) {
 	tuple_call(f, std::forward<Tuple>(t), std::make_index_sequence<std::tuple_size<ttype>::value>{}, std::forward<Args>(args)...);
 }
 // -------------------------------
-#endif
+// #endif
 
-namespace Event {
+namespace EventSystem {
 	
 typedef unsigned int id_type;
 
@@ -71,7 +71,7 @@ class Event {
 		
 		void _emit(id_type id, const void* args);
 		id_type _register(const std::string& evt_name, std::function<void(bool,id_type,const void*)> f);
-		id_type _listen(id_type id, any_call f, void* args);
+		id_type _listen(id_type id, bool once, any_call f, void* args);
 		
 		template<typename... Args, typename F>
 		decltype(auto) convert_to_any_call(F f) {
@@ -85,14 +85,29 @@ class Event {
 		// typedef std::array<int, 64> block;
 		// my::fsa<block> allocator;
 		
+		struct Listener {
+			id_type id;
+			bool listen_once;
+			any_call func;
+		};
+			
 		struct event {
 			id_type event_id;
-			std::function<void(bool,id_type,const void*)> add_or_remove;
-			std::vector<any_call> listeners;
+			std::function<void(bool,id_type,const void*)> add_or_remove;			
+			int has_listen_once;
+			int listener_free_id;
+			std::vector<Listener> listeners;
 		};
 		
+		// for Listen("some_event")
 		std::unordered_map<std::string, id_type> m_str_to_event;
+		
+		// for unlistening
+		std::map<id_type, std::pair<event*, int>> m_listener_to_idx;
+		
+		// for locating event listeners by id_type
 		std::vector<event> m_events;
+		int m_event_free_id;
 		
 	public:
 		Event();
@@ -105,30 +120,41 @@ class Event {
 		id_type Register(const std::string& event_name, F add_or_remove_func) {
 			return _register(event_name, convert_to_any_call<bool,id_type>(add_or_remove_func));
 		}
+		
+		id_type GetEventId(const std::string& event_name) {
+			auto it = m_str_to_event.find(event_name);
+			if(it != m_str_to_event.end()) {
+				return it->second;
+			}
+			return -1;
+		}
 
-		void Unregister( const std::string& registered_event_name );
-		void Unregister( id_type event_id );
+		// void Unregister( const std::string& registered_event_name );
+		// void Unregister( id_type event_id );
 		void StopListening( id_type listener_id );
 
 		template <typename F, typename ...Args>
-		id_type Listen(std::string str, F func, Args... args) {
+		id_type Listen(std::string str, bool once, F func, Args... args) {
 			auto it = m_str_to_event.find(str);
 			if(it != m_str_to_event.end()) {
-				return Listen(it->second, func, args...);
+				return Listen(it->second, once, func, args...);
 			} else {
-				return -1;
+				id_type id = Register(str);
+				return Listen(str, once, func, args...);
 			}
 		}
 		
 		template <typename F, typename ...Args>
-		id_type Listen(id_type event_id, F func, Args... args) {
+		id_type Listen(id_type event_id, bool once, F func, Args... args) {
+			// TODO: put somewhere on fsa (listener args) (multithreading)
 			std::tuple<Args...> tuple_args(args...);
-			id_type id = _listen(event_id, convert_to_any_call(func), &tuple_args);
+			id_type id = _listen(event_id, once, convert_to_any_call(func), &tuple_args);
 			return id;
 		}
 
 		template <typename ...Args>
 		void Emit( id_type id, Args... args ) {
+			// TODO: put somewhere on fsa (multithreading)
 			std::tuple<Args...> tuple_args(args...);
 			_emit(id, &tuple_args);
 		}
@@ -138,7 +164,7 @@ class Event {
 			std::tuple<Args...> tuple_args(args...);
 			auto it = m_str_to_event.find(evt_name);
 			if(it != m_str_to_event.end()) {
-				_emit(it->second, &tuple_args);				
+				_emit(it->second, &tuple_args);
 			} else {
 				id_type id = Register(evt_name);
 				_emit(id, &tuple_args);
@@ -163,23 +189,26 @@ class Event {
 		return singleton.Register(event_name, add_or_remove_func);
 	}
 
+	/*
 	inline void Unregister( const std::string& registered_event_name ) {
 		singleton.Unregister(registered_event_name);
 	}
 	inline void Unregister( id_type event_id ) {
 		singleton.Unregister(event_id);
 	}
+	*/
+	
 	inline void StopListening( id_type listener_id ) {
 		return singleton.StopListening(listener_id);
 	}
 	template <typename F, typename ...Args>
-	inline id_type Listen(const std::string str, F func, Args... args) {
-		return singleton.Listen(str, func, args...);
+	inline id_type Listen(const std::string str, bool once, F func, Args... args) {
+		return singleton.Listen(str, once, func, args...);
 	}
 	
 	template <typename F, typename ...Args>
-	inline id_type Listen(id_type event_id, F func, Args... args) {
-		return singleton.Listen(event_id, func, args...);
+	inline id_type Listen(id_type event_id, bool once, F func, Args... args) {
+		return singleton.Listen(event_id, once, func, args...);
 	}
 
 	template <typename ...Args>
